@@ -4,6 +4,7 @@ https://github.com/gpsnmeajp/VirtualMotionTracker/
 
 use: VMT 0.12
 """
+import time
 import argparse
 import threading
 import _tkinter
@@ -92,6 +93,8 @@ def th_capture(o_ui: vr_ui.CUserInterface, args: argparse.Namespace):
     dict_tracker_history[POSE_MP_HIP] = vr_lib.CTrackerHistory()
 
     while cam.isOpened():
+
+        time.sleep(0)
 
         success, image = cam.read()
 
