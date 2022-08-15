@@ -7,11 +7,7 @@ use: VMT 0.12
 import time
 import threading
 import tkinter
-import _tkinter
 
-import PIL
-import PIL.Image
-import PIL.ImageTk
 
 # KinectV2
 from pykinect2 import PyKinectV2
@@ -19,6 +15,8 @@ from pykinect2.PyKinectV2 import *
 from pykinect2 import PyKinectRuntime
 
 import pythonosc.udp_client
+
+import vr_lib
 
 VMT_OSC_HOST = "127.0.0.1"
 VMT_OSC_PORT = 39570
@@ -54,88 +52,11 @@ KN_TRACKERS = [
 ]
 
 
-class CVector3(object):
-    x: float = 0.0
-    y: float = 0.0
-    z: float = 0.0
-
-    def __init__(self, _x: float = 0.0, _y: float = 0.0, _z: float = 0.0):
-        self.x = _x
-        self.y = _y
-        self.z = _z
-
-    def __add__(self, other):
-        return CVector3(self.x + other.x, self.y + other.y, self.z + other.z)
-
-    def __sub__(self, other):
-        return CVector3(self.x - other.x, self.y - other.y, self.z - other.z)
-
-    def __mul__(self, other):
-        if isinstance(other, float):
-            return CVector3(self.x * other, self.y * other, self.z * other)
-        else:
-            return CVector3(self.x * other.x, self.y * other.y, self.z * other.z)
-
-    def __imul__(self, other):
-        if isinstance(other, (int, float)):
-            self.x *= float(other)
-            self.y *= float(other)
-            self.z *= float(other)
-        else:
-            self.x *= other.x
-            self.y *= other.y
-            self.z *= other.z
-
-        return self
-
-
-class CTrackerHistory(object):
-    list_vector3: list[CVector3]
-    history_size: int = 3
-
-    def __init__(self, _history_size: int = 3):
-        self.list_vector3 = []
-        self.history_size = _history_size
-
-    def avg(self) -> CVector3:
-
-        self.list_vector3 = self.list_vector3[self.history_size * -1 :]
-
-        v = len(self.list_vector3)
-        return CVector3(
-            sum([vct.x for vct in self.list_vector3]) / v,
-            sum([vct.y for vct in self.list_vector3]) / v,
-            sum([vct.z for vct in self.list_vector3]) / v,
-        )
-
-
-def calc_waist_vector(hip_l, hip_r) -> CVector3:
-    return CVector3(
-        (hip_l.x + hip_r.x) * 0.5,
-        (hip_l.y + hip_r.y) * 0.5,
-        (hip_l.z + hip_r.z) * 0.5,
-    )
-
-
-def send_osc(
-    osc_cli: pythonosc.udp_client.SimpleUDPClient,
-    idx: int,
-    enable: int,
-    time_offset: float,
-    vct: CVector3,
-):
-
-    msg_type = "/VMT/Room/Unity"
-    msg_body = [idx, enable, time_offset, vct.x, vct.y, vct.z, 0.0, 0.0, 0.0, 0.0]
-
-    osc_cli.send_message(msg_type, msg_body)
-
-
 tk_canvas: tkinter.Canvas = None
 tk_label_value: tkinter.StringVar = None
 tk_chk_value: tkinter.StringVar = None
-vct_scale = CVector3(1.0, 1.0, 1.0)
-vct_adjust = CVector3(0.0, 0.0, 0.0)
+vct_scale = vr_lib.CVector3(1.0, 1.0, 1.0)
+vct_adjust = vr_lib.CVector3(0.0, 0.0, 0.0)
 
 
 def th_capture():
@@ -146,10 +67,10 @@ def th_capture():
         PyKinectV2.FrameSourceTypes_Color | PyKinectV2.FrameSourceTypes_Body
     )
 
-    dict_tracker_history: dict[int, CTrackerHistory] = {}
+    dict_tracker_history: dict[int, vr_lib.CTrackerHistory] = {}
     for idx in KN_TRACKERS:
-        dict_tracker_history[idx] = CTrackerHistory()
-    dict_tracker_history[POSE_KN_HIP] = CTrackerHistory()
+        dict_tracker_history[idx] = vr_lib.CTrackerHistory()
+    dict_tracker_history[POSE_KN_HIP] = vr_lib.CTrackerHistory()
 
     while True:
 
@@ -168,7 +89,7 @@ def th_capture():
 
                 list_joint = o_body.joints
 
-                vct = calc_waist_vector(
+                vct = vr_lib.calc_waist_vector(
                     list_joint[POSE_KN_HIP_L].Position,
                     list_joint[POSE_KN_HIP_R].Position,
                 )
@@ -182,19 +103,19 @@ def th_capture():
 
                 dict_tracker_history[POSE_KN_HIP].list_vector3.append(vct)
                 vct_avg = dict_tracker_history[POSE_KN_HIP].avg()
-                send_osc(osc_cli, POSE_KN_HIP, 1, 0.0, vct_avg)
+                vr_lib.send_osc(osc_cli, POSE_KN_HIP, 1, 0.0, vct_avg)
 
                 for idx in KN_TRACKERS:
                     joint = list_joint[idx]
 
-                    vct = CVector3(joint.Position.x, joint.Position.y, joint.Position.z)
+                    vct = vr_lib.CVector3(joint.Position.x, joint.Position.y, joint.Position.z)
                     vct *= vct_scale
                     vct += vct_adjust
                     vct.z *= -1
 
                     dict_tracker_history[idx].list_vector3.append(vct)
                     vct_avg = dict_tracker_history[idx].avg()
-                    send_osc(osc_cli, idx, 1, 0.0, vct_avg)
+                    vr_lib.send_osc(osc_cli, idx, 1, 0.0, vct_avg)
 
 
 def scl_x(v: float):
