@@ -5,8 +5,8 @@ https://github.com/gpsnmeajp/VirtualMotionTracker/
 use: VMT 0.12
 """
 import time
+import argparse
 import threading
-import tkinter
 
 
 # KinectV2
@@ -17,13 +17,10 @@ from pykinect2 import PyKinectRuntime
 import pythonosc.udp_client
 
 import vr_lib
+import vr_ui
 
 VMT_OSC_HOST = "127.0.0.1"
 VMT_OSC_PORT = 39570
-
-
-PREVIEW_W = 256
-PREVIEW_H = 256
 
 
 POSE_KN_HEAD = 3
@@ -52,14 +49,7 @@ KN_TRACKERS = [
 ]
 
 
-tk_canvas: tkinter.Canvas = None
-tk_label_value: tkinter.StringVar = None
-tk_chk_value: tkinter.StringVar = None
-vct_scale = vr_lib.CVector3(1.0, 1.0, 1.0)
-vct_adjust = vr_lib.CVector3(0.0, 0.0, 0.0)
-
-
-def th_capture():
+def th_capture(o_ui: vr_ui.CUserInterface, args: argparse.Namespace):
 
     osc_cli = pythonosc.udp_client.SimpleUDPClient(VMT_OSC_HOST, VMT_OSC_PORT)
 
@@ -93,11 +83,11 @@ def th_capture():
                     list_joint[POSE_KN_HIP_L].Position,
                     list_joint[POSE_KN_HIP_R].Position,
                 )
-                vct *= vct_scale
-                vct += vct_adjust
+                vct *= o_ui.vct_scale
+                vct += o_ui.vct_adjust
                 vct.z *= -1
 
-                tk_label_value.set(
+                o_ui.tk_label_value.set(
                     "{:2.2f} {:2.2f} {:2.2f}".format(vct.x, vct.y, vct.z)
                 )
 
@@ -108,9 +98,11 @@ def th_capture():
                 for idx in KN_TRACKERS:
                     joint = list_joint[idx]
 
-                    vct = vr_lib.CVector3(joint.Position.x, joint.Position.y, joint.Position.z)
-                    vct *= vct_scale
-                    vct += vct_adjust
+                    vct = vr_lib.CVector3(
+                        joint.Position.x, joint.Position.y, joint.Position.z
+                    )
+                    vct *= o_ui.vct_scale
+                    vct += o_ui.vct_adjust
                     vct.z *= -1
 
                     dict_tracker_history[idx].list_vector3.append(vct)
@@ -118,93 +110,20 @@ def th_capture():
                     vr_lib.send_osc(osc_cli, idx, 1, 0.0, vct_avg)
 
 
-def scl_x(v: float):
-    vct_scale.x = float(v)
-
-
-def scl_y(v: float):
-    vct_scale.y = float(v)
-
-
-def scl_z(v: float):
-    vct_scale.z = float(v)
-
-
-def adj_x(v: float):
-    vct_adjust.x = float(v)
-
-
-def adj_y(v: float):
-    vct_adjust.y = float(v)
-
-
-def adj_z(v: float):
-    vct_adjust.z = float(v)
-
-
 def main():
-    global tk_canvas
-    global tk_label_value
-    global tk_chk_value
 
-    tk_root = tkinter.Tk()
-    tk_root.title("VR CamTrack[KN]")
-    tk_root.geometry("512x384")
+    parser = argparse.ArgumentParser()
+    # fmt: off
+    # fmt: on
 
-    main_frame = tkinter.Frame(tk_root)
-    main_frame.grid(column=0, row=0, sticky=tkinter.NSEW, padx=8, pady=8)
+    args = parser.parse_args()
 
-    for col, (cmd, v) in enumerate(((scl_x, 1.0), (scl_y, 1.0), (scl_z, 1.0))):
-        slider = tkinter.Scale(
-            main_frame,
-            from_=0.5,
-            to=2,
-            orient="horizontal",
-            resolution=0.1,
-            command=cmd,
-        )
-        slider.set(v)
-        slider.grid(column=col, row=0)
+    o_ui = vr_ui.CUserInterface()
 
-    for col, (cmd, v) in enumerate(((adj_x, 0.0), (adj_y, 0.0), (adj_z, 0.0))):
-        slider = tkinter.Scale(
-            main_frame,
-            from_=-2,
-            to=2,
-            orient="horizontal",
-            resolution=0.1,
-            command=cmd,
-        )
-        slider.set(v)
-        slider.grid(column=col, row=1)
-
-    tk_canvas = tkinter.Canvas(main_frame, width=PREVIEW_W, height=PREVIEW_H)
-    tk_canvas.grid(column=1, row=2)
-
-    tk_chk_value = tkinter.StringVar()
-    tk_chk_value.set("0")
-    tk_chk_preview = tkinter.Checkbutton(
-        main_frame,
-        text="Preview",
-        onvalue="1",
-        offvalue="0",
-        variable=tk_chk_value,
-    )
-    tk_chk_preview.grid(column=0, row=2)
-
-    tk_label_value = tkinter.StringVar()
-    tk_label_value.set("")
-    tk_label = tkinter.Label(main_frame, textvariable=tk_label_value)
-    tk_label.grid(column=1, row=3)
-
-    tk_root.columnconfigure(0, weight=1)
-    tk_root.rowconfigure(0, weight=1)
-    main_frame.columnconfigure(1, weight=1)
-
-    th = threading.Thread(target=th_capture)
+    th = threading.Thread(target=th_capture, args=(o_ui, args))
     th.start()
 
-    tk_root.mainloop()
+    o_ui.tk_root.mainloop()
 
 
 if __name__ == "__main__":

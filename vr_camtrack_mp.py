@@ -6,7 +6,6 @@ use: VMT 0.12
 """
 import argparse
 import threading
-import tkinter
 import _tkinter
 
 import PIL
@@ -21,6 +20,7 @@ import numpy as np
 import pythonosc.udp_client
 
 import vr_lib
+import vr_ui
 
 VMT_OSC_HOST = "127.0.0.1"
 VMT_OSC_PORT = 39570
@@ -28,10 +28,8 @@ VMT_OSC_PORT = 39570
 CAPTURE_DEVICE = 2
 CAPTURE_W = 640
 CAPTURE_H = 480
-CAPTURE_FPS = 60
+CAPTURE_FPS = 30
 
-PREVIEW_W = 256
-PREVIEW_H = 256
 
 POSE_MP_NOSE = 0
 POSE_MP_SHOULDER_L = 11
@@ -60,30 +58,12 @@ MP_TRACKERS = [
 ]
 
 
-tk_canvas: tkinter.Canvas = None
-tk_label_value: tkinter.StringVar = None
-tk_chk_value: tkinter.StringVar = None
-vct_scale = vr_lib.CVector3(1.0, 1.0, 1.0)
-vct_adjust = vr_lib.CVector3(0.0, 0.0, 0.0)
-
-
-def th_capture():
-
-    parser = argparse.ArgumentParser()
-    # fmt: off
-    parser.add_argument(
-        "-d", "--device", type=int, default=CAPTURE_DEVICE,
-        help="VideoCapture Device."
-    )
-    # fmt: on
-
-    args = parser.parse_args()
+def th_capture(o_ui: vr_ui.CUserInterface, args: argparse.Namespace):
 
     osc_cli = pythonosc.udp_client.SimpleUDPClient(VMT_OSC_HOST, VMT_OSC_PORT)
 
-    #
     cam = cv2.VideoCapture(args.device)
-    # cam.set(cv2.CAP_PROP_FPS, CAPTURE_FPS)
+    cam.set(cv2.CAP_PROP_FPS, CAPTURE_FPS)
     cam.set(cv2.CAP_PROP_FRAME_WIDTH, CAPTURE_W)
     cam.set(cv2.CAP_PROP_FRAME_HEIGHT, CAPTURE_H)
 
@@ -131,17 +111,16 @@ def th_capture():
         if res.pose_landmarks is None:
             continue
 
-        if True:
-            res_lm = res.pose_world_landmarks.landmark
-        else:
-            res_lm = res.pose_landmarks.landmark
+        res_lm = res.pose_world_landmarks.landmark
 
         vct = vr_lib.calc_waist_vector(res_lm[POSE_MP_HIP_L], res_lm[POSE_MP_HIP_R])
-        vct *= vct_scale
+        vct *= o_ui.vct_scale
         vct *= -1
-        vct += vct_adjust
+        vct += o_ui.vct_adjust
 
-        tk_label_value.set("X:{:2.2f} Y:{:2.2f} Z:{:2.2f}".format(vct.x, vct.y, vct.z))
+        o_ui.tk_label_value.set(
+            "X:{:2.2f} Y:{:2.2f} Z:{:2.2f}".format(vct.x, vct.y, vct.z)
+        )
 
         dict_tracker_history[POSE_MP_HIP].list_vector3.append(vct)
         vct_avg = dict_tracker_history[POSE_MP_HIP].avg()
@@ -153,9 +132,9 @@ def th_capture():
                 continue
 
             vct = vr_lib.CVector3(landmark.x, landmark.y, landmark.z)
-            vct *= vct_scale
+            vct *= o_ui.vct_scale
             vct *= -1
-            vct += vct_adjust
+            vct += o_ui.vct_adjust
 
             dict_tracker_history[idx].list_vector3.append(vct)
             vct_avg = dict_tracker_history[idx].avg()
@@ -164,7 +143,7 @@ def th_capture():
         # Preview
         screen = np.zeros(image.shape, dtype=np.uint8)
 
-        if tk_chk_value.get() == "1":
+        if o_ui.tk_chk_value.get() == "1":
 
             mp.solutions.drawing_utils.draw_landmarks(
                 screen,
@@ -173,14 +152,16 @@ def th_capture():
             )
 
         pil_image = PIL.Image.fromarray(cv2.flip(screen, 1))
-        pil_image.thumbnail((PREVIEW_W, PREVIEW_H), PIL.Image.Resampling.LANCZOS)
+        pil_image.thumbnail(
+            (vr_ui.CANVAS_W, vr_ui.CANVAS_H), PIL.Image.Resampling.LANCZOS
+        )
 
-        x = int((PREVIEW_W - pil_image.width) / 2)
-        y = int((PREVIEW_H - pil_image.height) / 2)
+        x = int((vr_ui.CANVAS_W - pil_image.width) / 2)
+        y = int((vr_ui.CANVAS_H - pil_image.height) / 2)
 
         try:
             tk_resource = PIL.ImageTk.PhotoImage(image=pil_image)
-            tk_canvas.create_image(x, y, image=tk_resource, anchor="nw")
+            o_ui.tk_canvas.create_image(x, y, image=tk_resource, anchor="nw")
         except _tkinter.TclError:
             break
         except AttributeError:
@@ -189,93 +170,24 @@ def th_capture():
     cam.release()
 
 
-def scl_x(v: float):
-    vct_scale.x = float(v)
-
-
-def scl_y(v: float):
-    vct_scale.y = float(v)
-
-
-def scl_z(v: float):
-    vct_scale.z = float(v)
-
-
-def adj_x(v: float):
-    vct_adjust.x = float(v)
-
-
-def adj_y(v: float):
-    vct_adjust.y = float(v)
-
-
-def adj_z(v: float):
-    vct_adjust.z = float(v)
-
-
 def main():
-    global tk_canvas
-    global tk_label_value
-    global tk_chk_value
 
-    tk_root = tkinter.Tk()
-    tk_root.title("VR CamTrack[MP]")
-    tk_root.geometry("512x384")
-
-    main_frame = tkinter.Frame(tk_root)
-    main_frame.grid(column=0, row=0, sticky=tkinter.NSEW, padx=8, pady=8)
-
-    for col, (cmd, v) in enumerate(((scl_x, 1.0), (scl_y, 1.0), (scl_z, 1.0))):
-        slider = tkinter.Scale(
-            main_frame,
-            from_=0.5,
-            to=2,
-            orient="horizontal",
-            resolution=0.1,
-            command=cmd,
-        )
-        slider.set(v)
-        slider.grid(column=col, row=0)
-
-    for col, (cmd, v) in enumerate(((adj_x, 0.0), (adj_y, 0.0), (adj_z, 0.0))):
-        slider = tkinter.Scale(
-            main_frame,
-            from_=-2,
-            to=2,
-            orient="horizontal",
-            resolution=0.1,
-            command=cmd,
-        )
-        slider.set(v)
-        slider.grid(column=col, row=1)
-
-    tk_canvas = tkinter.Canvas(main_frame, width=PREVIEW_W, height=PREVIEW_H)
-    tk_canvas.grid(column=1, row=2)
-
-    tk_chk_value = tkinter.StringVar()
-    tk_chk_value.set("0")
-    tk_chk_preview = tkinter.Checkbutton(
-        main_frame,
-        text="Preview",
-        onvalue="1",
-        offvalue="0",
-        variable=tk_chk_value,
+    parser = argparse.ArgumentParser()
+    # fmt: off
+    parser.add_argument(
+        "-d", "--device", type=int, default=CAPTURE_DEVICE,
+        help="VideoCapture Device."
     )
-    tk_chk_preview.grid(column=0, row=2)
+    # fmt: on
 
-    tk_label_value = tkinter.StringVar()
-    tk_label_value.set("")
-    tk_label = tkinter.Label(main_frame, textvariable=tk_label_value)
-    tk_label.grid(column=1, row=3)
+    args = parser.parse_args()
 
-    tk_root.columnconfigure(0, weight=1)
-    tk_root.rowconfigure(0, weight=1)
-    main_frame.columnconfigure(1, weight=1)
+    o_ui = vr_ui.CUserInterface()
 
-    th = threading.Thread(target=th_capture)
+    th = threading.Thread(target=th_capture, args=(o_ui, args))
     th.start()
 
-    tk_root.mainloop()
+    o_ui.tk_root.mainloop()
 
 
 if __name__ == "__main__":
