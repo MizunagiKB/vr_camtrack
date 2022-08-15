@@ -4,6 +4,7 @@ https://github.com/gpsnmeajp/VirtualMotionTracker/
 
 use: VMT 0.12
 """
+import argparse
 import threading
 import tkinter
 import _tkinter
@@ -143,26 +144,29 @@ vct_scale = CVector3(1.0, 1.0, 1.0)
 vct_adjust = CVector3(0.0, 0.0, 0.0)
 
 
-def init_mp():
-    pass
-
-
-def init_kn():
-    pass
-
-
 def th_capture():
+
+    parser = argparse.ArgumentParser()
+    # fmt: off
+    parser.add_argument(
+        "-d", "--device", type=int, default=CAPTURE_DEVICE,
+        help="VideoCapture Device."
+    )
+    # fmt: on
+
+    args = parser.parse_args()
 
     osc_cli = pythonosc.udp_client.SimpleUDPClient(VMT_OSC_HOST, VMT_OSC_PORT)
 
     #
-    cam = cv2.VideoCapture(CAPTURE_DEVICE)
+    cam = cv2.VideoCapture(args.device)
     # cam.set(cv2.CAP_PROP_FPS, CAPTURE_FPS)
     cam.set(cv2.CAP_PROP_FRAME_WIDTH, CAPTURE_W)
     cam.set(cv2.CAP_PROP_FRAME_HEIGHT, CAPTURE_H)
 
     print(
-        "CAP_PROP: {:f} x {:f} {:f}fps".format(
+        "CAP_PROP: Decice {:d}, {:f} x {:f} {:f}fps".format(
+            args.device,
             cam.get(cv2.CAP_PROP_FRAME_WIDTH),
             cam.get(cv2.CAP_PROP_FRAME_HEIGHT),
             cam.get(cv2.CAP_PROP_FPS),

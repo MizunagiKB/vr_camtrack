@@ -4,6 +4,7 @@ https://github.com/gpsnmeajp/VirtualMotionTracker/
 
 use: VMT 0.12
 """
+import time
 import threading
 import tkinter
 import _tkinter
@@ -137,14 +138,6 @@ vct_scale = CVector3(1.0, 1.0, 1.0)
 vct_adjust = CVector3(0.0, 0.0, 0.0)
 
 
-def init_mp():
-    pass
-
-
-def init_kn():
-    pass
-
-
 def th_capture():
 
     osc_cli = pythonosc.udp_client.SimpleUDPClient(VMT_OSC_HOST, VMT_OSC_PORT)
@@ -157,8 +150,6 @@ def th_capture():
     for idx in KN_TRACKERS:
         dict_tracker_history[idx] = CTrackerHistory()
     dict_tracker_history[POSE_KN_HIP] = CTrackerHistory()
-
-    import time
 
     while True:
 
