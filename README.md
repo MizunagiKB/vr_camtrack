@@ -1,2 +1,2 @@
-# vr_camtrack
+# VR CameraTracking for VRChat
 MotionTracking for VRChat
